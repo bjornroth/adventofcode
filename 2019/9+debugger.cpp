@@ -27,84 +27,94 @@
 typedef std::vector<int64_t> Memory;
 typedef std::vector<std::pair<int64_t, int>> Params;
 typedef std::deque<int64_t> IO;
+typedef std::map<int64_t, bool> Breakpoints;
 
 class Intcode {
  public:
+   enum run_state { kReady, kBlocked, kBreakpoint, kHalted, kOutOfMemory };
 
-  enum run_state { kReady, kBlocked, kHalted, kOutOfMemory };
+   std::map<int, std::string> mnemonics = {
+       {ADD, "ADD"},       {MUL, "MUL"},       {IO_IN, "IO_IN"},
+       {IO_OUT, "IO_OUT"}, {J_TRUE, "J_TRUE"}, {J_FALSE, "J_FALSE"},
+       {LT, "LT"},         {EQ, "EQ"},         {SET_RB, "SET_RB"},
+       {HALT, "HALT"}};
+   std::map<run_state, std::string> states = {{kReady, "Ready"},
+                                              {kBlocked, "IO"},
+                                              {kBreakpoint, "Break"},
+                                              {kHalted, "Halted"},
+                                              {kOutOfMemory, "OOM"}};
 
-  std::map<int, std::string> mnemonics = {
-      {ADD, "ADD"},       {MUL, "MUL"},       {IO_IN, "IO_IN"},
-      {IO_OUT, "IO_OUT"}, {J_TRUE, "J_TRUE"}, {J_FALSE, "J_FALSE"},
-      {LT, "LT"},         {EQ, "EQ"},         {SET_RB, "SET_RB"},
-      {HALT, "HALT"}};
+   Intcode(const Memory &memory) : _memory(memory) {}
 
-  Intcode(const Memory &memory) : _memory(memory) {}
+   run_state execute_instr(IO &io_in, IO &io_out) {
+     if (_pc >= _memory.size()) {
+       return kOutOfMemory;
+     }
 
-  run_state execute_instr(IO &io_in, IO &io_out) {
-    if (_pc >= _memory.size()) {
-      return kOutOfMemory;
-    }
-    
-    int64_t old_pc = _pc;
-    Params params;
-    int opcode = decode_instr(_pc, params);
+     int64_t old_pc = _pc;
+     Params params;
+     int opcode = decode_instr(_pc, params);
 
-    switch (opcode) {
-    case ADD:
-      writemem(params[OP_3].first,
-               readmem(params[OP_1].first) + readmem(params[OP_2].first));
-      break;
-    case MUL:
-      writemem(params[OP_3].first,
-               readmem(params[OP_1].first) * readmem(params[OP_2].first));
-      break;
-    case IO_IN:
-      if (io_in.size()) {
-        writemem(params[OP_1].first, io_in[0]);
-        io_in.pop_front();
-      } else {
-        // restore PC
-        _pc = old_pc;
-        // we're blocked until we get more input
-        return kBlocked;
-      }
-      break;
-    case IO_OUT:
-      io_out.push_back(readmem(params[OP_1].first));
-      break;
-    case J_TRUE:
-      if (readmem(params[OP_1].first) != 0)
-        _pc = readmem(params[OP_2].first);
-      break;
-    case J_FALSE:
-      if (readmem(params[OP_1].first) == 0)
-        _pc = readmem(params[OP_2].first);
-      break;
-    case LT:
-      if (readmem(params[OP_1].first) < readmem(params[OP_2].first))
-        writemem(params[OP_3].first, 1);
-      else
-        writemem(params[OP_3].first, 0);
-      break;
-    case EQ:
-      if (readmem(params[OP_1].first) == readmem(params[OP_2].first))
-        writemem(params[OP_3].first, 1);
-      else
-        writemem(params[OP_3].first, 0);
-      break;
-    case SET_RB:
-      _rb += readmem(params[OP_1].first);
-      break;
-    case HALT:
-      _halt = true;
-      break;
-    default:
-      std::cout << "unknown opcode " << opcode << " at " << old_pc << std::endl;
-      break;
-    }
+     switch (opcode) {
+     case ADD:
+       writemem(params[OP_3].first,
+                readmem(params[OP_1].first) + readmem(params[OP_2].first));
+       break;
+     case MUL:
+       writemem(params[OP_3].first,
+                readmem(params[OP_1].first) * readmem(params[OP_2].first));
+       break;
+     case IO_IN:
+       if (io_in.size()) {
+         writemem(params[OP_1].first, io_in[0]);
+         io_in.pop_front();
+       } else {
+         // restore PC
+         _pc = old_pc;
+         // we're blocked until we get more input
+         return kBlocked;
+       }
+       break;
+     case IO_OUT:
+       io_out.push_back(readmem(params[OP_1].first));
+       break;
+     case J_TRUE:
+       if (readmem(params[OP_1].first) != 0)
+         _pc = readmem(params[OP_2].first);
+       break;
+     case J_FALSE:
+       if (readmem(params[OP_1].first) == 0)
+         _pc = readmem(params[OP_2].first);
+       break;
+     case LT:
+       if (readmem(params[OP_1].first) < readmem(params[OP_2].first))
+         writemem(params[OP_3].first, 1);
+       else
+         writemem(params[OP_3].first, 0);
+       break;
+     case EQ:
+       if (readmem(params[OP_1].first) == readmem(params[OP_2].first))
+         writemem(params[OP_3].first, 1);
+       else
+         writemem(params[OP_3].first, 0);
+       break;
+     case SET_RB:
+       _rb += readmem(params[OP_1].first);
+       break;
+     case HALT:
+       _halt = true;
+       break;
+     default:
+       std::cout << "unknown opcode " << opcode << " at " << old_pc
+                 << std::endl;
+       break;
+     }
 
-    return (_halt ? kHalted : kReady);
+     if (_breakpoints.find(_pc) != _breakpoints.end()) {
+       return kBreakpoint;
+     }
+
+     return (_halt ? kHalted : kReady);
   }
 
   run_state run(IO &io_in, IO &io_out) {
@@ -118,32 +128,54 @@ class Intcode {
 
   void run_debugger() {
     bool quit = false;
+    run_state state = kReady;
     IO io_in, io_out;
     while (!quit) {
       std::string line;
       auto pc = _pc;
-      std::cout << print_instr(pc) << std::endl;
-      std::cout << ">> ";
+
+      for (const auto &out : io_out) {
+        std::cout << "output: " << out << std::endl;
+      }
+      if (state != kReady) {
+        std::cout << print_instr(pc) << std::endl;
+      }
+      std::cout << states[state];
+      std::cout << "> ";
       std::getline(std::cin, line);
-      if (line == "n") {
-	execute_instr(io_in, io_out);
-      } else if (line == "c") {
-	const auto state = run(io_in, io_out);
-	for (const auto &out : io_out) {
-	  std::cout << out << std::endl;
-	}
-	if (state == kBlocked) {
-	  std::cout << "IO >";
-	  std::string io;
-          std::getline(std::cin, io);
-          io_in.push_back(std::stoll(io));
-        }
-      } else if (line == "l") {
+      if (state == kBlocked) {
+        io_in.push_back(std::stoll(line));
+        state = kReady;
+      } else if (line.substr(0, 1) == "n") {
+	state = execute_instr(io_in, io_out);
+      } else if (line.substr(0, 1) == "c") {
+	state = run(io_in, io_out);
+      } else if (line.substr(0, 1) == "l") {
         pc = _pc;
         for (int i = 0; i < 10; i++) {
           std::cout << print_instr(pc) << std::endl;
         }
-      } else if (line == "q") {
+      } else if (line.substr(0, 1) == "p") {
+        int addr = std::stoll(line.substr(2));
+        std::cout << readmem(addr) << std::endl;
+      } else if (line.substr(0, 1) == "b") {
+        if (line.size() > 2) {
+          int addr = std::stoll(line.substr(2));
+          if (_breakpoints.find(addr) != _breakpoints.end()) {
+            _breakpoints[addr] = false;
+            std::cout << "Breakpoint removed" << std::endl;
+          } else {
+            _breakpoints[addr] = true;
+            std::cout << "Breakpoint at " << addr << std::endl;
+          }
+        } else {
+          for (const auto &bp : _breakpoints) {
+            if (bp.second) {
+              std::cout << bp.first << std::endl;
+            }
+          }
+        }
+      } else if (line.substr(0, 1) == "q") {
         quit = true;
       }
     }
@@ -236,6 +268,11 @@ private:
     Params params;
     auto old_pc = pc;
     int opcode = decode_instr(pc, params);
+    if (_breakpoints.find(old_pc) != _breakpoints.end()) {
+      line += "+ ";
+    } else {
+      line += "  ";
+    }
     line += std::to_string(old_pc) + " " + mnemonics[opcode];
     for (int i = 0; i < params.size(); i++) {
       switch (params[i].second) {
@@ -249,19 +286,12 @@ private:
 	line += " (" + std::to_string(_memory[++old_pc]) + ")";
 	break;
       }
-      
     }
     return line;
   }
 
-  void dump_memory() {
-    for (int i = 0; i < _memory.size(); i++) {
-      std::cout << _memory[i] << ",";
-    }
-    std::cout << std::endl;
-  }
-
   Memory _memory;
+  Breakpoints _breakpoints;
   int64_t _pc = 0;
   int64_t _rb = 0;
   bool _halt = false;
