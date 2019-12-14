@@ -83,6 +83,8 @@ int64_t ore_for_fuel(int64_t fuel, Reactions &reactions) {
   return -1 * materials["ORE"];
 }
 
+#define TARGET 1000000000000
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     std::cout << "Need filename" << std::endl;
@@ -98,24 +100,21 @@ int main(int argc, char *argv[]) {
     fuel *= 2;
     ore = ore_for_fuel(fuel, reactions);
     // std::cout << fuel << " => " << ore << std::endl;
-  } while (ore < 1000000000000);
+  } while (ore < TARGET);
 
   fuel /= 2;
-  int step = 1000;
+  int step = (fuel/2);
 
-  int factor = 1;
-  while (fuel/factor >= 10)
-    factor *= 10;
-
-  for (step = factor; step >= 1; step /= 10) {
-    do {
-      fuel += step;
-      ore = ore_for_fuel(fuel, reactions);
-      // std::cout << fuel << " => " << ore << std::endl;
-    } while (ore < 1000000000000);
-
-    fuel -= step;
-  }
+  while (true) {
+    fuel += step;
+    ore = ore_for_fuel(fuel, reactions);
+    // std::cout << "step " << step << " fuel " << fuel << " => " << ore << std::endl;
+    if (step == 1)
+      break;
+    step /= 2;
+    if ((step > 0 && ore > TARGET) || (step < 0 && ore < TARGET))
+      step *= -1;
+  };
 
   std::cout << fuel << std::endl;
 
