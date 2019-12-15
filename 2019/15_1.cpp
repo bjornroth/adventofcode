@@ -40,18 +40,6 @@ Coord update_position(const Coord& pos, int dir) {
   return updated;
 }
 
-int direction_from_delta(int delta_x, int delta_y) {
-  if (delta_x > 0)
-    return EAST;
-  if (delta_x < 0)
-    return WEST;
-  if (delta_y > 0)
-    return SOUTH;
-  if (delta_y < 0)
-    return NORTH;
-  return 0;
-}
-
 int reverse_direction(int dir) {
   switch (dir) {
   case NORTH:
